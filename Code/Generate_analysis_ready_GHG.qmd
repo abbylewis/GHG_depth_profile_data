@@ -1,0 +1,142 @@
+---
+title: "Generate analysis-ready GHG database"
+author: "Abby Lewis"
+format: html
+editor: visual
+---
+
+To aid in future research, we generated an analysis-ready greenhouse gas data file that harmonizes lake temperature, dissolved oxygen, and greenhouse gas measurements for each sampling date at each lake. In data extracted from publication figures, measurement depths may differ slightly between water temperature, dissolved oxygen, and greenhouse gas data, limiting the ability to directly assess drivers of dissolved gas concentration. Consequently, in the analysis-ready data product, we linearly interpolated and averaged all temperature and dissolved oxygen data from published article figures to 0.1 m intervals (sample depth ≤ 10 m) or 1 m intervals (sample depth \> 10 m) and matched these values with measured CO2 and CH4 concentration data. We limited this dataset to observations with greenhouse gas data measurements and only included data from one focal site at each lake (typically the deepest point in the lake).
+
+Here, we load data and metadata from EDI to re-generate the analysis-ready data product, which is also archived on EDI
+
+## Load packages and data
+
+```{r}
+#Load packages
+library(tidyverse)
+library(zoo)
+
+#Load data from EDI
+metadata <- read_delim("https://pasta-s.lternet.edu/package/data/eml/edi/1311/1/fadd3eaa25b5fdd1fc4efba70e660579", delim = ";")
+data <- read_delim("https://pasta-s.lternet.edu/package/data/eml/edi/1311/1/ca2482ef3c43f053ae13cdf2bf5ba7a8", delim = ";")
+```
+
+## Processing
+
+```{r}
+#focal site only
+clean_data <- data %>% filter(Focal_site)
+
+#select only extracted data (onego has no depths, so removed) and average to depth interval (0.1m for <10m, 1m for >10m)
+df_extracted <- clean_data %>% 
+  filter(!is.na(ExtractorName), 
+         LakeName != "onego") %>% 
+  mutate(depth_new = if_else(Depth_m <=10, 
+                             round(Depth_m, digits = 1), 
+                             round(Depth_m, digits = 0))) %>%
+  group_by(LakeName, LakeID, Source, Date, depth_new) %>%
+  summarize(
+    Depth_layer = first(Depth_layer),
+    CO2_umolL = mean(CO2_umolL, na.rm = T),
+    CH4_umolL = mean(CH4_umolL, na.rm = T),
+    DO_mgL = mean(DO_mgL, na.rm = T),
+    Temp_C = mean(Temp_C, na.rm = T),
+    pH = mean(pH, na.rm = T),
+    SpecificConductance_uScm = mean(SpecificConductance_uScm, na.rm = T),
+    Chla_ugL = mean(Chla_ugL, na.rm = T),
+    TP_ugL = mean(TP_ugL, na.rm = T),
+    TN_mgL = mean(TN_mgL, na.rm = T),
+    DOC_mgL = mean(DOC_mgL, na.rm = T),
+    Notes = first(Notes),
+    ContactName = first(ContactName),
+    PaperName = first(PaperName),
+    ExtractorName = first(ExtractorName),
+    Focal_site = first(Focal_site)
+  ) %>% rename(Depth_m = depth_new) %>% 
+  mutate_all(~ifelse(is.nan(.), NA, .))
+
+# Function to interpolate (and extrapolate) oxygen and temp
+na_interpolation2 <- function(x, option = "linear") {
+
+  total_not_missing <- sum(!is.na(x))
+  
+  # check there is sufficient data for na_interpolation 
+  if(total_not_missing < 2) {x} 
+
+    else
+
+    # replace takes an input vector, a T/F vector & replacement value
+    {replace(
+        # input vector is interpolated data
+        # this will impute leading/lagging NAs which we don't want 
+        na.approx(x, rule = 2), 
+
+        # create T/F vector for NAs,  
+        is.na(na.approx(x, rule = 2, na.rm = FALSE)), 
+
+        # replace TRUE with NA in input vector  
+        NA) 
+      }
+}
+
+#interpolate
+df_extracted <- df_extracted %>% 
+  group_by(LakeName, LakeID, Source, Date) %>%
+  complete(Depth_m = seq(min(Depth_m), max(Depth_m), by = 0.1)) %>%
+  arrange(Depth_m, .by_group = T) %>%
+  mutate_at(.vars = vars(DO_mgL, Temp_C), 
+            .funs = ~na_interpolation2(.)) %>% 
+  ungroup() %>% 
+  select(LakeName, LakeID, Source, Date, Depth_m, DO_mgL, Temp_C) %>%
+  rename(DO_int = DO_mgL, Temp_int = Temp_C) %>%
+  right_join(df_extracted, by = c("LakeName", "LakeID", "Source", "Date", "Depth_m"))
+
+#See if oxygen profiles look good
+df_extracted %>% 
+  select(LakeName, LakeID, Source, Date, Depth_m, DO_int) %>% 
+  na.omit() %>%
+  ggplot(aes(y = Depth_m, x = DO_int, color = Date)) +
+  geom_point() + 
+  egg::theme_article() +
+  scale_y_reverse() +
+  facet_wrap(~LakeName, scales = "free")
+
+#Remove original DO and temp columns
+df_extracted <- df_extracted %>% select(!c(DO_mgL, Temp_C)) %>% rename(DO_mgL = DO_int, Temp_C = Temp_int)
+
+#Summarize to date
+df_contributed <- clean_data %>% 
+  filter(is.na(ExtractorName) | LakeName == "onego") %>% 
+  group_by(LakeName, LakeID, Source, Date, Depth_m) %>%
+  summarize(
+    Depth_layer = first(Depth_layer),
+    CO2_umolL = mean(CO2_umolL, na.rm = T),
+    CH4_umolL = mean(CH4_umolL, na.rm = T),
+    DO_mgL = mean(DO_mgL, na.rm = T),
+    Temp_C = mean(Temp_C, na.rm = T),
+    pH = mean(pH, na.rm = T),
+    SpecificConductance_uScm = mean(SpecificConductance_uScm, na.rm = T),
+    Chla_ugL = mean(Chla_ugL, na.rm = T),
+    TP_ugL = mean(TP_ugL, na.rm = T),
+    TN_mgL = mean(TN_mgL, na.rm = T),
+    DOC_mgL = mean(DOC_mgL, na.rm = T),
+    Notes = first(Notes),
+    ContactName = first(ContactName),
+    PaperName = first(PaperName),
+    ExtractorName = first(ExtractorName),
+    Focal_site = first(Focal_site)
+  ) %>%
+  mutate_all(~ifelse(is.nan(.), NA, .))
+
+clean_data <- rbind(df_contributed, df_extracted) %>% 
+  arrange(LakeID) %>%
+  select(!c(ExtractorName, Focal_site, Notes)) %>% 
+  select(LakeID, everything())
+
+#select only observations with gas data
+clean_data <- clean_data %>% 
+  filter(!if_all(c(CO2_umolL, CH4_umolL), is.na))
+
+#Export
+readr::write_excel_csv(clean_data, "../Data/cleaned_GHG_data.csv")
+```
