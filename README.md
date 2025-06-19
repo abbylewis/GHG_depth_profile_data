@@ -1,2 +1,3 @@
-# GHG_depth_profile_data
-Profile data for greenhouse gases in lakes worldwide
+# GHG depth profile data
+
+This repository contains code used in a data manuscript about greenhouse gas concentrations in lakes worldwide. 
