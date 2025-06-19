@@ -1,0 +1,74 @@
+---
+title: "Statistics and validity checks"
+author: "Abby Lewis"
+format: html
+editor: visual
+---
+
+This file calculates basic summary statistics and provides data validity checks for the manuscript submission
+
+## Load packages and data
+
+```{r}
+#Load packages
+library(tidyverse)
+
+#Load data from EDI
+metadata <- read_delim("https://pasta-s.lternet.edu/package/data/eml/edi/1311/1/fadd3eaa25b5fdd1fc4efba70e660579", delim = ";") %>%
+  filter(Focal_site)
+data <- read_delim("https://pasta-s.lternet.edu/package/data/eml/edi/1311/1/ca2482ef3c43f053ae13cdf2bf5ba7a8", delim = ";")%>%
+  filter(Focal_site)
+```
+
+## Summary statistics
+
+```{r}
+full <- data %>%
+  left_join(metadata, by = c("LakeID", "Source"))
+
+# Table 1
+full %>% 
+  mutate(LakeType = ifelse(grepl("lake", LakeType), "lake", LakeType)) %>%
+  group_by(LakeType, LakeID) %>% 
+  summarise(
+    co2 = ifelse(sum(!is.na(CO2_umolL)) > 0, "yes", NA),
+    ch4 = ifelse(sum(!is.na(CH4_umolL)) > 0, "yes", NA),
+    DO = ifelse(sum(!is.na(DO_mgL)) > 0, "yes", NA),
+    temp = ifelse(sum(!is.na(Temp_C)) > 0, "yes", NA),
+    dates = ifelse(length(unique(Date)) > 1, "yes", NA)) %>% 
+  group_by(LakeType) %>%
+  summarise(
+    n = length(unique(LakeID)),
+    co2 = sum(!is.na(co2)),
+    ch4 = sum(!is.na(ch4)),
+    temp = sum(!is.na(temp)),
+    DO = sum(!is.na(DO)),
+    dates = sum(!is.na(dates))
+  )
+
+# Number for Figure 3
+length(unique(metadata$ContactName[!is.na(metadata$ContactName)]))
+
+# Numbers used in abstract and manuscript text
+length(unique(metadata$PaperName[!is.na(metadata$PaperName)]))
+length(unique(metadata$Country[!is.na(metadata$Country)]))
+length(unique(data$LakeID))
+```
+
+## Validity checks
+
+```{r}
+# Check that all lakes that are in the data are in the metadata 
+# (and vice versa)
+unique(data$LakeID[!data$LakeID %in% metadata$LakeID])
+unique(metadata$LakeID[!metadata$LakeID %in% data$LakeID])
+
+#Check min, max, and mean values
+full %>%
+  pivot_longer(where(is.numeric)) %>%
+  select(LakeID, Source, name, value) %>%
+  group_by(name) %>%
+  summarize(min = min(value, na.rm = T),
+            max = max(value, na.rm = T),
+            mean = mean(value, na.rm = T))
+```
