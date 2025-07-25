@@ -5,7 +5,7 @@ format: html
 editor: visual
 ---
 
-Generate two figures for the Scientific Data publication
+This file generates two figures for the Scientific Data publication
 
 ## Load packages and data
 
@@ -22,8 +22,8 @@ library(ggspatial)
 library(lwgeom)
 
 #Load data from EDI
-metadata <- read_delim("https://pasta-s.lternet.edu/package/data/eml/edi/1311/1/fadd3eaa25b5fdd1fc4efba70e660579", delim = ";")
-data <- read_delim("https://pasta-s.lternet.edu/package/data/eml/edi/1311/1/ca2482ef3c43f053ae13cdf2bf5ba7a8", delim = ";")
+metadata <- read_delim("https://pasta-s.lternet.edu/package/data/eml/edi/1346/2/fadd3eaa25b5fdd1fc4efba70e660579")
+data <- read_delim("https://pasta-s.lternet.edu/package/data/eml/edi/1346/2/ca2482ef3c43f053ae13cdf2bf5ba7a8")
 ```
 
 ## Map study sites (Figure 1a)

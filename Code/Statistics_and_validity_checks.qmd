@@ -14,9 +14,9 @@ This file calculates basic summary statistics and provides data validity checks 
 library(tidyverse)
 
 #Load data from EDI
-metadata <- read_delim("https://pasta-s.lternet.edu/package/data/eml/edi/1311/1/fadd3eaa25b5fdd1fc4efba70e660579", delim = ";") %>%
+metadata <- read_delim("https://pasta-s.lternet.edu/package/data/eml/edi/1346/2/fadd3eaa25b5fdd1fc4efba70e660579") %>%
   filter(Focal_site)
-data <- read_delim("https://pasta-s.lternet.edu/package/data/eml/edi/1311/1/ca2482ef3c43f053ae13cdf2bf5ba7a8", delim = ";")%>%
+data <- read_delim("https://pasta-s.lternet.edu/package/data/eml/edi/1346/2/ca2482ef3c43f053ae13cdf2bf5ba7a8")%>%
   filter(Focal_site)
 ```
 
@@ -53,6 +53,7 @@ length(unique(metadata$ContactName[!is.na(metadata$ContactName)]))
 length(unique(metadata$PaperName[!is.na(metadata$PaperName)]))
 length(unique(metadata$Country[!is.na(metadata$Country)]))
 length(unique(data$LakeID))
+length(unique(metadata$Hylak_id))
 ```
 
 ## Validity checks
