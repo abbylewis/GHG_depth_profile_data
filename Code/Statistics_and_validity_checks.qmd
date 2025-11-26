@@ -14,9 +14,9 @@ This file calculates basic summary statistics and provides data validity checks 
 library(tidyverse)
 
 #Load data from EDI
-metadata <- read_delim("https://pasta-s.lternet.edu/package/data/eml/edi/1346/2/fadd3eaa25b5fdd1fc4efba70e660579") %>%
+metadata <- read_delim("https://pasta.lternet.edu/package/data/eml/edi/2220/2/fadd3eaa25b5fdd1fc4efba70e660579") %>%
   filter(Focal_site)
-data <- read_delim("https://pasta-s.lternet.edu/package/data/eml/edi/1346/2/ca2482ef3c43f053ae13cdf2bf5ba7a8")%>%
+data <- read_delim("https://pasta.lternet.edu/package/data/eml/edi/2220/2/ca2482ef3c43f053ae13cdf2bf5ba7a8")%>%
   filter(Focal_site)
 ```
 
@@ -28,14 +28,16 @@ full <- data %>%
 
 # Table 1
 full %>% 
-  mutate(LakeType = ifelse(grepl("lake", LakeType), "lake", LakeType)) %>%
   group_by(LakeType, LakeID) %>% 
   summarise(
-    co2 = ifelse(sum(!is.na(CO2_umolL)) > 0, "yes", NA),
-    ch4 = ifelse(sum(!is.na(CH4_umolL)) > 0, "yes", NA),
-    DO = ifelse(sum(!is.na(DO_mgL)) > 0, "yes", NA),
-    temp = ifelse(sum(!is.na(Temp_C)) > 0, "yes", NA),
-    dates = ifelse(length(unique(Date)) > 1, "yes", NA)) %>% 
+  co2 = ifelse(sum(!is.na(CO2_umolL)) > 0, "yes", NA),
+  ch4 = ifelse(sum(!is.na(CH4_umolL)) > 0, "yes", NA),
+  DO = ifelse(sum(!is.na(DO_mgL)) > 0, "yes", NA),
+  temp = ifelse(sum(!is.na(Temp_C)) > 0, "yes", NA),
+  dates = ifelse(length(unique(Date)) > 1, "yes", NA)
+) %>% 
+  mutate(LakeType = ifelse(LakeType == "shallow lake or wetland" |
+                             LakeType == "small lake", "lake", LakeType)) %>%
   group_by(LakeType) %>%
   summarise(
     n = length(unique(LakeID)),
@@ -46,11 +48,8 @@ full %>%
     dates = sum(!is.na(dates))
   )
 
-# Number for Figure 3
-length(unique(metadata$ContactName[!is.na(metadata$ContactName)]))
-
 # Numbers used in abstract and manuscript text
-length(unique(metadata$PaperName[!is.na(metadata$PaperName)]))
+length(unique(metadata$Source[!grepl("Contributed", metadata$Source)]))
 length(unique(metadata$Country[!is.na(metadata$Country)]))
 length(unique(data$LakeID))
 length(unique(metadata$Hylak_id))
