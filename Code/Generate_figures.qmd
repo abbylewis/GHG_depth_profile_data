@@ -5,7 +5,7 @@ format: html
 editor: visual
 ---
 
-This file generates two figures for the Scientific Data publication
+This file generates three figures for the Scientific Data publication.
 
 ## Load packages and data
 
@@ -20,15 +20,17 @@ library(rnaturalearthdata)
 library(rnaturalearthhires)
 library(ggspatial)
 library(lwgeom)
+library(cowplot)
+library(patchwork)
 
 #Load data from EDI
-metadata <- read_delim("https://pasta-s.lternet.edu/package/data/eml/edi/1346/2/fadd3eaa25b5fdd1fc4efba70e660579")
-data <- read_delim("https://pasta-s.lternet.edu/package/data/eml/edi/1346/2/ca2482ef3c43f053ae13cdf2bf5ba7a8")
+metadata <- read_delim("https://pasta.lternet.edu/package/data/eml/edi/2220/2/fadd3eaa25b5fdd1fc4efba70e660579")
+data <- read_delim("https://pasta.lternet.edu/package/data/eml/edi/2220/2/ca2482ef3c43f053ae13cdf2bf5ba7a8")
 ```
 
-## Map study sites (Figure 1a)
+## Map study sites (Figure 1)
 
-Information about Winkel Tripel projection <https://wilkelab.org/practicalgg/articles/Winkel_tripel.html>
+Information about Winkel Tripel projection: <https://wilkelab.org/practicalgg/articles/Winkel_tripel.html>
 
 ```{r}
 #Load basemap
@@ -41,14 +43,14 @@ disp_win_wgs84 <- st_sfc(st_point(c(-180, -80)), st_point(c(180, 80)),
 disp_win_trans <- st_transform(disp_win_wgs84, crs = crs_wintri)
 disp_win_coord <- st_coordinates(disp_win_trans)
 
+#Set graticule
 grat_wintri <- 
   st_graticule(x = c(-180, -90, 180, 90),
                crs = st_crs(4326),
                lat = c(-89.9, seq(-90, 90, 20), 89.9),
                ) %>%
   st_transform_proj(crs = crs_wintri)
-meta_wintri <- st_transform_proj(st_as_sf(metadata, coords = c("Longitude", "Latitude")), 
-                                 crs = crs_wintri)
+meta_wintri <- st_transform_proj(st_as_sf(metadata, coords = c("Longitude", "Latitude"), crs = 4326), crs = crs_wintri)
 meta_wintri <- data %>%
   group_by(LakeID) %>%
   summarize(CH4 = ifelse(sum(!is.na(CH4_umolL))>0, 1, 0),
@@ -59,10 +61,10 @@ meta_wintri <- data %>%
                                     ifelse(CO2 == 1, "CO[2]", NA)))) %>%
   left_join(metadata) %>%
   filter(!is.na(Latitude)) %>%
-  st_as_sf(coords = c("Longitude", "Latitude")) %>%
+  st_as_sf(coords = c("Longitude", "Latitude"), crs = 4326) %>%
   st_transform_proj(crs = crs_wintri) 
 
-# vectors of latitudes and longitudes that go once around the 
+# vectors of latitudes and longitudes that go around the 
 # globe in 1-degree steps
 lat_min <- -90
 lat_max <- 90
@@ -83,6 +85,7 @@ wintri_outline <-
   st_sf() %>%
   st_transform_proj(crs = crs_wintri) # transform to Winkel tripel
 
+#Summarize number of lakes for each gas
 ns <- meta_wintri %>%
   group_by(Data_avail) %>%
   summarize(n = length(unique(LakeID)))
@@ -95,7 +98,7 @@ co2 <- ns$n[ns$Data_avail == "CO[2]"]
 map <- ggplot(data = world_wintri) +
   geom_sf(data = wintri_outline,
     fill = "grey93", size = 0.5/.pt) + 
-  geom_sf(data = grat_wintri, color = "black", size = 0.05, alpha = 0.1) + 
+  geom_sf(data = grat_wintri, color = "black", size = 0.5, alpha = 0.1) + 
   geom_sf(fill = "white", color = "grey70", size = 0.5/.pt) +
   geom_sf(data = meta_wintri %>% filter(Data_avail == "CO[2]"),
           aes(fill = Data_avail),shape = 21, color = "white", 
@@ -106,8 +109,7 @@ map <- ggplot(data = world_wintri) +
   geom_sf(data = meta_wintri %>% filter(Data_avail == "Both"),
           aes(fill = Data_avail),shape = 21, color = "white", 
           size = 2, alpha  =.5, stroke = .4)+
-  coord_sf(ylim = disp_win_coord[,'Y'],
-           datum = NULL, expand = FALSE)+
+  coord_sf(datum = NULL)+
   scale_fill_manual(values = c("#000000","#922D50","#006989"),
                     name = "Data availability",
                     labels = c(bquote(CH[4]~"and"~CO[2]~"("*italic(n)~"="~.(both)*")"), 
@@ -115,10 +117,8 @@ map <- ggplot(data = world_wintri) +
                                bquote(CO[2]~"only  ("*italic(n)~"="~.(co2)*")")))+
   theme(plot.margin = ggplot2::margin(0, 0, 0, 0, "cm"),
         plot.background = element_rect(fill = "white"),
-        legend.position = c(.1, .3),
-        legend.background = element_rect(color = "black", 
-                                         linewidth = 0.2, 
-                                         fill = fill_alpha("white", 0.8)),
+        legend.position = "bottom",
+        legend.text = element_text(margin = margin(l = 0.1)),
         axis.title.x = element_blank(),
         axis.title.y = element_blank(),
         axis.ticks.x = element_blank(),
@@ -126,30 +126,89 @@ map <- ggplot(data = world_wintri) +
         axis.ticks.y = element_blank(),
         axis.text.y = element_blank(),
         panel.background = element_rect(fill = "white"),
-        panel.grid = element_line(color = "grey80",linetype = "dotted", linewidth = 0.0001))
+        legend.margin = margin(t = -10, unit = "pt"))
+
+#Now do subplots for two particularly dense regions
+#Europe
+bbox_coords <- st_bbox(c(xmin = -8.9, ymin = 35.2, 
+                         xmax = 28, ymax = 72.2))
+bbox_polygon <- st_as_sf(st_as_sfc(st_bbox(bbox_coords)), crs = 4326)
+bbox_proj <- bbox_polygon %>% st_transform_proj(crs = "+proj=wintri")
+eu <- map +
+  coord_sf(
+    xlim = st_bbox(bbox_proj)[c(1,3)],
+    ylim = st_bbox(bbox_proj)[c(2,4)],
+    expand = FALSE
+    ) +
+  annotation_scale(location = "br", width_hint = 0.3, height = unit(0.1, "cm")) +
+  theme(legend.position = "none",
+        panel.border = element_rect(colour = "black", fill=NA, linewidth=0.7))
+
+#USA
+usa_states <- st_as_sf(maps::map("state", fill = TRUE, plot = FALSE))
+bbox_coords <- st_bbox(c(xmin = -102, ymin = 26, 
+                         xmax = -72, ymax = 50))
+bbox_polygon <- st_as_sf(st_as_sfc(st_bbox(bbox_coords)), crs = 4326)
+bbox_proj <- bbox_polygon %>% st_transform_proj(crs = "EPSG:5070")
+usa <- map +
+  geom_sf(data = usa_states, aes(fill = "State"), 
+          color = "grey70", fill = NA, size=0.125) +
+  coord_sf(
+    xlim = st_bbox(bbox_proj)[c(1,3)],
+    ylim = st_bbox(bbox_proj)[c(2,4)],
+    expand = FALSE,
+    crs = "EPSG:5070"
+    ) +
+  annotation_scale(location = "br", width_hint = 0.3, height = unit(0.1, "cm")) +
+  theme(legend.position = "none",
+        panel.border = element_rect(colour = "black", fill=NA, linewidth=0.7))
+
+
+#full map
+map2 <- map + theme(plot.margin = unit(c(0.5, 5.5, 1.5, 56.5), "pt")) 
+full <- map2 %>% 
+  ggdraw() +
+  draw_plot(usa,
+    x = -0.05, 
+    y = 0.15,
+    width = 0.36, 
+    height = 0.36) +
+  draw_plot(eu,
+    x = -0.07, 
+    y = 0.53,
+    width = 0.4, 
+    height = 0.4)
+  
+ggsave(plot = full, filename = "../Figures/map_inserts.jpeg", width = 6, 
+       height = 3.5, units = "in", dpi = 300)
 ```
 
-## Subplots for key summary stats
+## Metadata summary stats (Figure 2)
+
+Histograms for key variables
 
 ```{r}
-#Figure 1-b1
-depth <- metadata %>%
+depth <- metadata %>% 
+  filter(Focal_site == TRUE) %>%
+  group_by(LakeID) %>%
+  summarize(MaximumDepth_m = mean(MaximumDepth_m, na.rm = T)) %>%
   ggplot(aes(x = MaximumDepth_m))+
   geom_density()+
   scale_x_log10(n.breaks = 5)+
   scale_x_log10(breaks = c(1, 10, 100, 1000), 
                 labels = c("1", "10", "100","1,000"))+
   theme_bw()+
-  xlab("Maximum depth (m)")+
-  theme(axis.title.x = element_text(vjust = 1),
+  xlab(expression("Maximum depth (m)")) +
+  theme(axis.title.x = element_text(vjust = 1,
+                                    margin = margin(t = 7.1)),
         axis.text.x = element_text(angle = 30, hjust = 1))
 
-#Figure 1-b2
-area <- metadata %>%
+area <- metadata %>% 
+  filter(Focal_site == TRUE) %>%
+  group_by(LakeID) %>%
+  summarize(SurfaceArea_km2 = mean(SurfaceArea_km2, na.rm = T)) %>%
   ggplot(aes(x = SurfaceArea_km2))+
   geom_density()+
-  #scale_x_log10(n.breaks = 3, breaks = c(0.001, 1, 1000), 
-  #              labels = c("0.001", "1", "1000"))+
   scale_x_log10(n.breaks = 3, breaks = c(0.0001, 0.01, 1, 100, 100000), 
                 labels = c("0.0001", "0.01", "1", "100","100,000"))+
   theme_bw()+
@@ -157,7 +216,28 @@ area <- metadata %>%
   theme(axis.title.x = element_text(vjust = 1),
         axis.text.x = element_text(angle = 30, hjust = 1))
 
-#Figure 1-b3
+phos <- metadata %>% 
+  filter(Focal_site == TRUE) %>%
+  group_by(LakeID) %>%
+  summarize(TP_ugL_mean = mean(TP_ugL_mean, na.rm = T)) %>%
+  ggplot(aes(x = TP_ugL_mean))+
+  geom_density()+
+  scale_x_log10(labels = scales::label_comma(drop0trailing = T))+
+  theme_bw()+
+  xlab(expression("Total phosphorus ("*mu*"g L"^-1*")"))+
+  theme(axis.title.x = element_text(vjust = 1),
+        axis.text.x = element_text(angle = 30, hjust = 1))
+
+years <- data %>%
+  mutate(Year = year(Date)) %>%
+  filter(!is.na(CO2_umolL)|!is.na(CH4_umolL)) %>%
+  group_by(Year, LakeID) %>%
+  summarize() %>% 
+  ggplot(aes(x = Year))+
+  geom_density()+
+  theme_bw()+
+  scale_x_continuous(n.breaks = 5)
+
 doys <- data %>%
   left_join(metadata %>%
               select(LakeID, Latitude)) %>%
@@ -178,36 +258,81 @@ doys <- data %>%
                      limits = c(0,365))+
   theme(axis.title.x = element_text(vjust = 0.5))
 
-jpeg("../Figures/Data summary.jpeg", width = 6, height = 4.5, units = "in", res = 300)
-ggpubr::ggarrange(map, 
-                  ggpubr::ggarrange(depth, area, doys, nrow = 1, ncol = 3, 
-                                      labels = c("b1", "b2", "b3"), label.x = -0.03,
-                                      font.label = list(size = 10), align = "h"), 
-                  nrow=2, heights = c(2, 1), labels = c("a", "b"), label.y = c(1, 1.15))
-dev.off()
+lats <- metadata %>% 
+  filter(Focal_site == TRUE) %>%
+  group_by(LakeID, Latitude) %>%
+  summarize() %>%
+  ggplot(aes(x = Latitude))+
+  geom_density()+
+  xlab("Latitude (degrees)")+
+  theme_bw()+
+  scale_x_continuous(breaks = scales::breaks_pretty(n = 5))+
+  theme(axis.title.x = element_text(vjust = 0.5))
+
+#Combine and save
+top <- lats + years + doys + plot_layout(axis_titles = "collect")
+bottom <- phos + area + depth + plot_layout(axis_titles = "collect") 
+
+data_plots <- top/bottom + plot_annotation(tag_levels = 'a')
+ggsave(plot = data_plots, filename = "../Figures/data_plots.jpeg", width = 6, 
+       height = 4, units = "in", dpi = 300)
 ```
 
-## Concentration density plots (Figure 2)
+## Concentration density plots (Figure 3)
 
 ```{r}
 min <- min(c(data$CO2_umolL, data$CH4_umolL), na.rm = T)
 max <- max(c(data$CO2_umolL, data$CH4_umolL), na.rm = T)
 
-jpeg("../Figures/Density.jpg", res = 300, width = 5, height = 2, units = "in")
-data %>%
-  select(CO2_umolL, CH4_umolL) %>%
-  pivot_longer(everything()) %>%
-  mutate(name = case_match(name,
-                           "CH4_umolL" ~ "CH[4]",
-                           "CO2_umolL" ~ "CO[2]")) %>%
-  ggplot(aes(x = value))+
-  geom_density()+
-  scale_x_continuous(trans = "pseudo_log", 
-                     breaks = c(0,1,10,100,1000,10000, 100000, 1000000),
-                     labels = c("0","1","10", "100", "1,000", "10,000","100,000", "1,000,000")) +
-  facet_wrap(~name, labeller = "label_parsed", scales = "free")+
-  xlab("Concentration (µM)")+
-  theme_bw()+
-  theme(axis.text.x = element_text(angle = 30, hjust = 1))
-dev.off()
+layer_dat <- data %>% 
+  left_join(metadata) %>%
+  group_by(LakeID, LakeName, Source, Site, Date) %>%
+  mutate(layer = case_when(Depth_m == min(Depth_m) ~ "Surface",
+                           Depth_m == max(Depth_m) ~ "Bottom")) %>%
+  ungroup() %>%
+  mutate(layer = ifelse(layer == "Surface" & Depth_m > MaximumDepth_m*.33,
+                        NA, layer)) %>%
+  mutate(layer = ifelse(layer == "Bottom" & Depth_m < MaximumDepth_m*.5,
+                        NA, layer)) %>%
+  mutate(layer = factor(layer, levels = c("Surface", "Bottom"))) %>%
+  filter(!is.na(layer))
+  
+co2 <- layer_dat %>% 
+  ggplot(aes(x = layer, y = CO2_umolL)) +
+  geom_violin() +
+  geom_boxplot(width = 0.1, outlier.size = 0.7, outlier.shape = 1) +
+  scale_y_log10(labels = scales::label_comma(drop0trailing = T),
+                n.breaks = 5) +
+  theme_bw() +
+  labs(y = expression("CO"[2]*" ("*mu*"M)"), x = "Layer") +
+  theme(axis.title.x = element_blank())
+
+ch4 <- layer_dat %>% 
+  ggplot(aes(x = layer, y = CH4_umolL)) +
+  geom_violin() +
+  geom_boxplot(width = 0.1, outlier.size = 0.7, outlier.shape = 1) +
+  scale_y_log10(labels = scales::label_comma(drop0trailing = T)) +
+  theme_bw() +
+  labs(y = expression("CH"[4]*" ("*mu*"M)"), x = "Layer") +
+  theme(axis.title.x = element_blank())
+
+do <- layer_dat %>% 
+  ggplot(aes(x = layer, y = DO_mgL)) +
+  geom_violin() +
+  geom_boxplot(width = 0.1, outlier.size = 0.7, outlier.shape = 1) +
+  theme_bw() +
+  labs(y = expression("DO (mg L"^-1*")"), x = "Layer")
+
+temp <- layer_dat %>% 
+  ggplot(aes(x = layer, y = Temp_C)) +
+  geom_violin() +
+  geom_boxplot(width = 0.1, outlier.size = 0.7, outlier.shape = 1) +
+  theme_bw() +
+  labs(y = expression("Temp (C)"), x = "Layer")
+
+#Combine and save
+var_plots <- (co2+ch4)/(do+temp) + plot_annotation(tag_levels = 'a')
+var_plots
+ggsave(plot = var_plots, filename = "../Figures/var_plots.jpeg", width = 5, 
+       height = 4, units = "in", dpi = 300)
 ```

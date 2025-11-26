@@ -17,8 +17,8 @@ library(tidyverse)
 library(zoo)
 
 #Load data from EDI
-metadata <- read_delim("https://pasta-s.lternet.edu/package/data/eml/edi/1346/2/fadd3eaa25b5fdd1fc4efba70e660579")
-data <- read_delim("https://pasta-s.lternet.edu/package/data/eml/edi/1346/2/ca2482ef3c43f053ae13cdf2bf5ba7a8")
+metadata <- read_delim("https://pasta.lternet.edu/package/data/eml/edi/2220/2/fadd3eaa25b5fdd1fc4efba70e660579")
+data <- read_delim("https://pasta.lternet.edu/package/data/eml/edi/2220/2/ca2482ef3c43f053ae13cdf2bf5ba7a8")
 ```
 
 ## Processing
@@ -29,7 +29,7 @@ clean_data <- data %>% filter(Focal_site)
 
 #select only extracted data (onego has no depths, so removed) and average to depth interval (0.1m for <10m, 1m for >10m)
 df_extracted <- clean_data %>% 
-  filter(!is.na(ExtractorName), 
+  filter(!grepl("Contributed", Source), 
          LakeName != "onego") %>% 
   mutate(depth_new = if_else(Depth_m <=10, 
                              round(Depth_m, digits = 1), 
@@ -48,9 +48,6 @@ df_extracted <- clean_data %>%
     TN_mgL = mean(TN_mgL, na.rm = T),
     DOC_mgL = mean(DOC_mgL, na.rm = T),
     Notes = first(Notes),
-    ContactName = first(ContactName),
-    PaperName = first(PaperName),
-    ExtractorName = first(ExtractorName),
     Focal_site = first(Focal_site)
   ) %>% rename(Depth_m = depth_new) %>% 
   mutate_all(~ifelse(is.nan(.), NA, .))
@@ -104,9 +101,10 @@ df_extracted %>%
 #Remove original DO and temp columns
 df_extracted <- df_extracted %>% select(!c(DO_mgL, Temp_C)) %>% rename(DO_mgL = DO_int, Temp_C = Temp_int)
 
+#Contributed data
 #Summarize to date
 df_contributed <- clean_data %>% 
-  filter(is.na(ExtractorName) | LakeName == "onego") %>% 
+  filter(grepl("Contributed", Source) | LakeName == "onego") %>% 
   group_by(LakeName, LakeID, Source, Date, Depth_m) %>%
   summarize(
     Depth_layer = first(Depth_layer),
@@ -121,22 +119,23 @@ df_contributed <- clean_data %>%
     TN_mgL = mean(TN_mgL, na.rm = T),
     DOC_mgL = mean(DOC_mgL, na.rm = T),
     Notes = first(Notes),
-    ContactName = first(ContactName),
-    PaperName = first(PaperName),
-    ExtractorName = first(ExtractorName),
     Focal_site = first(Focal_site)
   ) %>%
   mutate_all(~ifelse(is.nan(.), NA, .))
 
 clean_data <- rbind(df_contributed, df_extracted) %>% 
   arrange(LakeID) %>%
-  select(!c(ExtractorName, Focal_site, Notes)) %>% 
-  select(LakeID, everything())
+  mutate(Focal_site = T) %>%
+  select(LakeID, LakeName, Source, Focal_site, 
+         Date, Depth_m, Depth_layer, 
+         CO2_umolL, CH4_umolL, 
+         DO_mgL, Temp_C, pH, SpecificConductance_uScm, 
+         Chla_ugL, TP_ugL, TN_mgL, DOC_mgL)
 
 #select only observations with gas data
 clean_data <- clean_data %>% 
   filter(!if_all(c(CO2_umolL, CH4_umolL), is.na))
 
 #Export
-readr::write_excel_csv(clean_data, "../Data/cleaned_GHG_data.csv")
+readr::write_excel_csv(clean_data, "cleaned_GHG_data.csv")
 ```
