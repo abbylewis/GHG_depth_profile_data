@@ -4,4 +4,4 @@ This repository contains code used in a data manuscript about greenhouse gas con
 
 ## Contact
 - Abby Lewis (lewisa4@si.edu)
-- Joe Rabaey (rabae005@umn.edu)
+- Joe Rabaey (jsr339@cornell.edu)
