@@ -24,8 +24,8 @@ library(cowplot)
 library(patchwork)
 
 #Load data from EDI
-metadata <- read_delim("https://pasta.lternet.edu/package/data/eml/edi/2220/2/fadd3eaa25b5fdd1fc4efba70e660579")
-data <- read_delim("https://pasta.lternet.edu/package/data/eml/edi/2220/2/ca2482ef3c43f053ae13cdf2bf5ba7a8")
+metadata <- read_delim("https://pasta.lternet.edu/package/data/eml/edi/2220/3/fadd3eaa25b5fdd1fc4efba70e660579")
+data <- read_delim("https://pasta.lternet.edu/package/data/eml/edi/2220/3/ca2482ef3c43f053ae13cdf2bf5ba7a8")
 ```
 
 ## Map study sites (Figure 1)
